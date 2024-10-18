@@ -1,142 +1,175 @@
-# PHP Query Builder Documentation
+# PHP Fluent Query Builder (Beta)
 
-## Table of Contents
-1. [Introduction](#introduction)
-2. [Installation](#installation)
-3. [Basic Usage](#basic-usage)
-4. [Query Methods](#query-methods)
-5. [Examples](#examples)
-6. [Best Practices](#best-practices)
+A lightweight, secure, and flexible SQL query builder for PHP applications. This Query Builder provides an expressive and fluent interface to build and execute database queries without writing raw SQL.
 
-## Introduction
+## 🌟 Features
 
-This PHP Query Builder is a flexible and powerful tool for building SQL queries in a fluent, expressive manner. Inspired by Laravel's query builder, it provides an intuitive interface for database operations while maintaining the ability to work with any PHP project.
+- Fluent interface for building SQL queries
+- Support for all major SQL operations (SELECT, INSERT, UPDATE, DELETE)
+- Secure parameter binding to prevent SQL injection
+- Multiple join types (INNER, LEFT, RIGHT)
+- Complex WHERE conditions with multiple operators
+- ORDER BY, GROUP BY, and HAVING clauses
+- Pagination support with LIMIT and OFFSET
+- PDO integration for database agnostic operations
+- Debug methods for query inspection
+- Comprehensive error handling
 
-## Installation
+## 📋 Requirements
 
-To use this query builder in your project, simply include the `QueryBuilder.php` file in your project and use Composer's autoloading or require it manually:
+- PHP 7.4 or higher
+- PDO PHP Extension
+- A supported database system (MySQL, PostgreSQL, SQLite, etc.)
 
-```php
-require_once 'path/to/QueryBuilder.php';
+## 🚀 Installation
+
+Currently, this package is in beta. You can install it by cloning this repository:
+
+```bash
+git clone https://github.com/yourusername/php-query-builder.git
 ```
 
-## Basic Usage
+Future versions will be available via Composer:
 
-To start using the query builder, first create an instance with a PDO connection:
-
-```php
-$pdo = new PDO('mysql:host=localhost;dbname=testdb', 'username', 'password');
-$queryBuilder = new QueryBuilder\QueryBuilder($pdo);
+```bash
+composer require yourusername/php-query-builder
 ```
 
-Then, you can start building your queries:
+## 🔧 Basic Setup
 
 ```php
-$users = $queryBuilder
-    ->table('users')
-    ->where('age', '>', 18)
-    ->orderBy('name')
-    ->get();
+// Create a PDO connection
+$pdo = new PDO("mysql:host=localhost;dbname=your_database", "username", "password");
+
+// Initialize the Query Builder
+$qb = new QueryBuilder($pdo);
 ```
 
-## Query Methods
+## 📖 Usage Examples
 
-### Select Operations
-
-- `table(string $table)`: Set the table to query.
-- `select(array|string $columns)`: Specify the columns to select.
-- `where(string $column, string $operator, mixed $value)`: Add a where clause.
-- `orWhere(string $column, string $operator, mixed $value)`: Add an OR where clause.
-- `whereIn(string $column, array $values)`: Add a where IN clause.
-- `orderBy(string $column, string $direction = 'ASC')`: Add an order by clause.
-- `limit(int $limit)`: Set the limit for the query.
-- `offset(int $offset)`: Set the offset for the query.
-- `join(string $table, string $first, string $operator, string $second, string $type = 'INNER')`: Add a join clause.
-- `leftJoin(string $table, string $first, string $operator, string $second)`: Add a left join clause.
-- `groupBy(string ...$columns)`: Add a group by clause.
-- `having(string $column, string $operator, mixed $value)`: Add a having clause.
-- `get()`: Execute the query and get the results.
-- `first()`: Get the first result of the query.
-
-### Insert Operations
-
-- `insert(array $values)`: Insert a new record.
-
-### Update Operations
-
-- `update(array $values)`: Update records.
-
-### Delete Operations
-
-- `delete()`: Delete records.
-
-## Examples
-
-### Basic Select Query
-
+### Select Query
 ```php
-$users = $queryBuilder
-    ->table('users')
+// Simple select
+$users = $qb->table('users')
     ->select(['id', 'name', 'email'])
-    ->where('age', '>', 18)
-    ->orderBy('name')
+    ->where('status', 'active')
+    ->get();
+
+// Complex select with joins
+$orders = $qb->table('orders')
+    ->select(['orders.id', 'users.name', 'orders.total'])
+    ->join('users', 'orders.user_id', '=', 'users.id')
+    ->where('orders.status', 'pending')
+    ->orderBy('orders.created_at', 'DESC')
     ->limit(10)
     ->get();
 ```
 
-### Join Query
-
-```php
-$orders = $queryBuilder
-    ->table('orders')
-    ->select(['orders.id', 'users.name', 'orders.total'])
-    ->join('users', 'users.id', '=', 'orders.user_id')
-    ->where('orders.status', 'completed')
-    ->get();
-```
-
 ### Insert Query
-
 ```php
-$userId = $queryBuilder
-    ->table('users')
+$userId = $qb->table('users')
     ->insert([
         'name' => 'John Doe',
         'email' => 'john@example.com',
-        'age' => 30
+        'created_at' => date('Y-m-d H:i:s')
     ]);
 ```
 
 ### Update Query
-
 ```php
-$updatedRows = $queryBuilder
-    ->table('users')
+$affected = $qb->table('users')
     ->where('id', 1)
-    ->update(['status' => 'active']);
+    ->update([
+        'name' => 'Jane Doe',
+        'updated_at' => date('Y-m-d H:i:s')
+    ]);
 ```
 
 ### Delete Query
-
 ```php
-$deletedRows = $queryBuilder
-    ->table('users')
+$deleted = $qb->table('users')
     ->where('status', 'inactive')
     ->delete();
 ```
 
-## Best Practices
+### Advanced Where Conditions
+```php
+$results = $qb->table('products')
+    ->where('price', '>', 100)
+    ->where('category', 'electronics')
+    ->orWhere('featured', true)
+    ->whereIn('id', [1, 2, 3, 4])
+    ->get();
+```
 
-1. **Use Prepared Statements**: The query builder uses prepared statements internally to prevent SQL injection. Always use the provided methods rather than concatenating raw SQL.
+### Aggregates and Grouping
+```php
+$sales = $qb->table('orders')
+    ->select(['customer_id', 'SUM(total) as total_sales'])
+    ->groupBy('customer_id')
+    ->having('total_sales', '>', 1000)
+    ->get();
+```
 
-2. **Chain Methods**: Take advantage of method chaining to create readable and expressive queries.
+## 🔍 Debugging
 
-3. **Handle Exceptions**: Wrap your database operations in try-catch blocks to handle potential PDOExceptions.
+You can inspect the generated SQL query and parameters:
 
-4. **Use Transactions**: For operations that involve multiple queries, use database transactions to ensure data integrity.
+```php
+$debug = $qb->table('users')
+    ->where('status', 'active')
+    ->toSql();
 
-5. **Optimize Queries**: Use `select()` to specify only the columns you need, and use `limit()` when you don't need all results.
+print_r($debug['query']);  // Shows the SQL query
+print_r($debug['params']); // Shows the bound parameters
+```
 
-6. **Reuse the Query Builder**: You can reuse the query builder instance for multiple queries, just make sure to set the table each time.
+## ⚠️ Known Limitations (Beta)
 
-Remember, while this query builder provides a convenient interface for database operations, it's important to understand the underlying SQL being generated, especially for complex queries or when optimizing for performance.
+1. No support for sub-queries yet
+2. Limited support for UNION operations
+3. No support for table aliases in complex joins
+4. Basic transaction support only
+5. Limited database-specific feature support
+
+## 🛣️ Roadmap
+
+- [ ] Add support for sub-queries
+- [ ] Implement UNION operations
+- [ ] Add support for table aliases
+- [ ] Enhanced transaction support
+- [ ] Query caching mechanism
+- [ ] More database-specific features
+- [ ] Query logging and profiling
+- [ ] Unit test coverage
+- [ ] Documentation website
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 🔒 Security
+
+If you discover any security-related issues, please email security@example.com instead of using the issue tracker.
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+## ✨ Credits
+
+Developed and maintained by [Your Name/Organization]
+
+## 📧 Support
+
+For support questions, please use the issue tracker or email support@example.com.
+
+---
+
+**Note:** This is a beta version. API might change without prior notice. Not recommended for production use yet.

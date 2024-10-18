@@ -1,244 +1,252 @@
 <?php
 
-namespace QueryBuilder;
+class QueryBuilder {
+    private $pdo;
+    private $table;
+    private $columns = ['*'];
+    private $where = [];
+    private $orderBy = [];
+    private $groupBy = [];
+    private $having = [];
+    private $joins = [];
+    private $limit = null;
+    private $offset = null;
+    private $params = [];
+    private $query = '';
 
-use PDO;
-use Exception;
-
-class QueryBuilder
-{
-    protected $pdo;
-    protected $table;
-    protected $columns = ['*'];
-    protected $wheres = [];
-    protected $orderBy = [];
-    protected $limit;
-    protected $offset;
-    protected $joins = [];
-    protected $groupBy = [];
-    protected $havings = [];
-
-    public function __construct(PDO $pdo)
-    {
+    public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
     }
 
-    public function table($table)
-    {
+    public function table($table) {
         $this->table = $table;
         return $this;
     }
 
-    public function select($columns = ['*'])
-    {
+    public function select($columns = ['*']) {
         $this->columns = is_array($columns) ? $columns : func_get_args();
         return $this;
     }
 
-    public function where($column, $operator = null, $value = null)
-    {
+    public function where($column, $operator = null, $value = null) {
         if (is_array($column)) {
             foreach ($column as $key => $value) {
-                $this->where($key, '=', $value);
+                $this->where[] = [$key, '=', $value];
+                $this->params[":where_{$key}"] = $value;
             }
             return $this;
         }
 
-        if (func_num_args() == 2) {
+        if ($value === null) {
             $value = $operator;
             $operator = '=';
         }
 
-        $this->wheres[] = compact('column', 'operator', 'value');
+        $this->where[] = [$column, $operator, $value];
+        $this->params[":where_{$column}"] = $value;
         return $this;
     }
 
-    public function orWhere($column, $operator = null, $value = null)
-    {
-        if (func_num_args() == 2) {
+    public function orWhere($column, $operator = null, $value = null) {
+        if ($value === null) {
             $value = $operator;
             $operator = '=';
         }
 
-        $this->wheres[] = ['type' => 'OR', 'column' => $column, 'operator' => $operator, 'value' => $value];
+        $this->where[] = ['OR', $column, $operator, $value];
+        $this->params[":orwhere_{$column}"] = $value;
         return $this;
     }
 
-    public function whereIn($column, array $values)
-    {
-        $this->wheres[] = compact('column', 'values', 'type');
-        $this->addBinding($values);
+    public function whereIn($column, array $values) {
+        $placeholders = [];
+        foreach ($values as $key => $value) {
+            $param = ":wherein_{$column}_{$key}";
+            $placeholders[] = $param;
+            $this->params[$param] = $value;
+        }
+        
+        $this->where[] = [$column, 'IN', "(" . implode(',', $placeholders) . ")"];
         return $this;
     }
 
-    public function orderBy($column, $direction = 'ASC')
-    {
-        $this->orderBy[] = compact('column', 'direction');
+    public function join($table, $first, $operator = null, $second = null, $type = 'INNER') {
+        $this->joins[] = [
+            'table' => $table,
+            'first' => $first,
+            'operator' => $operator,
+            'second' => $second,
+            'type' => $type
+        ];
         return $this;
     }
 
-    public function limit($limit)
-    {
+    public function leftJoin($table, $first, $operator = null, $second = null) {
+        return $this->join($table, $first, $operator, $second, 'LEFT');
+    }
+
+    public function rightJoin($table, $first, $operator = null, $second = null) {
+        return $this->join($table, $first, $operator, $second, 'RIGHT');
+    }
+
+    public function orderBy($column, $direction = 'ASC') {
+        $this->orderBy[] = [$column, strtoupper($direction)];
+        return $this;
+    }
+
+    public function groupBy($columns) {
+        $this->groupBy = is_array($columns) ? $columns : func_get_args();
+        return $this;
+    }
+
+    public function having($column, $operator = null, $value = null) {
+        if ($value === null) {
+            $value = $operator;
+            $operator = '=';
+        }
+
+        $this->having[] = [$column, $operator, $value];
+        $this->params[":having_{$column}"] = $value;
+        return $this;
+    }
+
+    public function limit($limit) {
         $this->limit = $limit;
         return $this;
     }
 
-    public function offset($offset)
-    {
+    public function offset($offset) {
         $this->offset = $offset;
         return $this;
     }
 
-    public function join($table, $first, $operator = null, $second = null, $type = 'INNER')
-    {
-        if (func_num_args() == 3) {
-            $second = $operator;
-            $operator = '=';
-        }
+    // Insert record
+    public function insert(array $data) {
+        $columns = implode(', ', array_keys($data));
+        $values = implode(', ', array_map(function($item) {
+            return ":$item";
+        }, array_keys($data)));
 
-        $this->joins[] = compact('table', 'first', 'operator', 'second', 'type');
-        return $this;
+        $this->query = "INSERT INTO {$this->table} ($columns) VALUES ($values)";
+        $this->params = array_combine(
+            array_map(function($key) { return ":$key"; }, array_keys($data)),
+            array_values($data)
+        );
+
+        return $this->execute();
     }
 
-    public function leftJoin($table, $first, $operator = null, $second = null)
-    {
-        return $this->join($table, $first, $operator, $second, 'LEFT');
+    // Update record(s)
+    public function update(array $data) {
+        $sets = implode(', ', array_map(function($item) {
+            return "$item = :update_$item";
+        }, array_keys($data)));
+
+        $this->query = "UPDATE {$this->table} SET $sets";
+        $this->params = array_combine(
+            array_map(function($key) { return ":update_$key"; }, array_keys($data)),
+            array_values($data)
+        );
+
+        $this->buildWhere();
+        return $this->execute();
     }
 
-    public function groupBy(...$columns)
-    {
-        $this->groupBy = array_merge($this->groupBy, $columns);
-        return $this;
+    // Delete record(s)
+    public function delete() {
+        $this->query = "DELETE FROM {$this->table}";
+        $this->buildWhere();
+        return $this->execute();
     }
 
-    public function having($column, $operator = null, $value = null)
-    {
-        if (func_num_args() == 2) {
-            $value = $operator;
-            $operator = '=';
-        }
-
-        $this->havings[] = compact('column', 'operator', 'value');
-        return $this;
-    }
-
-    public function get()
-    {
-        $sql = $this->toSql();
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->getBindings());
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    public function first()
-    {
-        $results = $this->limit(1)->get();
-        return $results ? $results[0] : null;
-    }
-
-    public function insert(array $values)
-    {
-        $sql = "INSERT INTO {$this->table} (" . implode(', ', array_keys($values)) . ") VALUES (" . implode(', ', array_fill(0, count($values), '?')) . ")";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(array_values($values));
-        return $this->pdo->lastInsertId();
-    }
-
-    public function update(array $values)
-    {
-        $set = [];
-        foreach ($values as $column => $value) {
-            $set[] = "{$column} = ?";
-        }
-        $sql = "UPDATE {$this->table} SET " . implode(', ', $set);
-        $sql .= $this->compileWheres();
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(array_merge(array_values($values), $this->getBindings()));
-        return $stmt->rowCount();
-    }
-
-    public function delete()
-    {
-        $sql = "DELETE FROM {$this->table}";
-        $sql .= $this->compileWheres();
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->getBindings());
-        return $stmt->rowCount();
-    }
-
-    protected function toSql()
-    {
-        $sql = "SELECT " . implode(', ', $this->columns) . " FROM {$this->table}";
+    // Build and execute SELECT query
+    public function get() {
+        $this->query = "SELECT " . implode(', ', $this->columns) . " FROM {$this->table}";
         
+        // Add joins
         foreach ($this->joins as $join) {
-            $sql .= " {$join['type']} JOIN {$join['table']} ON {$join['first']} {$join['operator']} {$join['second']}";
+            $this->query .= " {$join['type']} JOIN {$join['table']} ON {$join['first']} {$join['operator']} {$join['second']}";
         }
 
-        $sql .= $this->compileWheres();
-
+        $this->buildWhere();
+        
+        // Add GROUP BY
         if (!empty($this->groupBy)) {
-            $sql .= " GROUP BY " . implode(', ', $this->groupBy);
+            $this->query .= " GROUP BY " . implode(', ', $this->groupBy);
         }
 
-        if (!empty($this->havings)) {
-            $sql .= " HAVING " . $this->compileHavings();
+        // Add HAVING
+        if (!empty($this->having)) {
+            $havingClauses = [];
+            foreach ($this->having as $having) {
+                $havingClauses[] = "{$having[0]} {$having[1]} :having_{$having[0]}";
+            }
+            $this->query .= " HAVING " . implode(' AND ', $havingClauses);
         }
 
+        // Add ORDER BY
         if (!empty($this->orderBy)) {
-            $sql .= " ORDER BY " . implode(', ', array_map(function($order) {
-                return "{$order['column']} {$order['direction']}";
-            }, $this->orderBy));
+            $orderClauses = array_map(function($order) {
+                return "{$order[0]} {$order[1]}";
+            }, $this->orderBy);
+            $this->query .= " ORDER BY " . implode(', ', $orderClauses);
         }
 
-        if ($this->limit) {
-            $sql .= " LIMIT {$this->limit}";
-        }
-
-        if ($this->offset) {
-            $sql .= " OFFSET {$this->offset}";
-        }
-
-        return $sql;
-    }
-
-    protected function compileWheres()
-    {
-        if (empty($this->wheres)) {
-            return '';
-        }
-
-        $wheres = [];
-        foreach ($this->wheres as $where) {
-            if (isset($where['type']) && $where['type'] === 'OR') {
-                $wheres[] = "OR {$where['column']} {$where['operator']} ?";
-            } else {
-                $wheres[] = "{$where['column']} {$where['operator']} ?";
+        // Add LIMIT and OFFSET
+        if ($this->limit !== null) {
+            $this->query .= " LIMIT {$this->limit}";
+            if ($this->offset !== null) {
+                $this->query .= " OFFSET {$this->offset}";
             }
         }
 
-        return " WHERE " . implode(' AND ', $wheres);
+        return $this->execute();
     }
 
-    protected function compileHavings()
-    {
-        return implode(' AND ', array_map(function($having) {
-            return "{$having['column']} {$having['operator']} ?";
-        }, $this->havings));
-    }
-
-    protected function getBindings()
-    {
-        $bindings = [];
-        foreach ($this->wheres as $where) {
-            if (isset($where['values'])) {
-                $bindings = array_merge($bindings, $where['values']);
-            } else {
-                $bindings[] = $where['value'];
+    private function buildWhere() {
+        if (!empty($this->where)) {
+            $whereClauses = [];
+            foreach ($this->where as $where) {
+                if ($where[0] === 'OR') {
+                    $whereClauses[] = "OR {$where[1]} {$where[2]} :orwhere_{$where[1]}";
+                } else if (strpos($where[2], '(') === 0) {
+                    // Handle WHERE IN case
+                    $whereClauses[] = "{$where[0]} {$where[1]} {$where[2]}";
+                } else {
+                    $whereClauses[] = "{$where[0]} {$where[1]} :where_{$where[0]}";
+                }
             }
+            $this->query .= " WHERE " . ltrim(implode(' ', $whereClauses), 'OR ');
         }
-        foreach ($this->havings as $having) {
-            $bindings[] = $having['value'];
+    }
+
+    private function execute() {
+        try {
+            $stmt = $this->pdo->prepare($this->query);
+            $stmt->execute($this->params);
+
+            // For SELECT queries
+            if (stripos($this->query, 'SELECT') === 0) {
+                return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+            
+            // For INSERT queries, return last insert ID
+            if (stripos($this->query, 'INSERT') === 0) {
+                return $this->pdo->lastInsertId();
+            }
+            
+            // For UPDATE/DELETE queries, return affected rows
+            return $stmt->rowCount();
+        } catch (PDOException $e) {
+            throw new Exception("Query execution failed: " . $e->getMessage());
         }
-        return $bindings;
+    }
+
+    // Get the raw SQL query (for debugging)
+    public function toSql() {
+        return [
+            'query' => $this->query,
+            'params' => $this->params
+        ];
     }
 }

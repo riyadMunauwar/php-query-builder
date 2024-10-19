@@ -201,7 +201,7 @@ Developed and maintained by [Riyad Munauwar]
 
 For support questions, please use:
 - GitHub Issues for bug reports and feature requests
-- Email support@example.com for general inquiries
+- Email hello@riyadmunauwar.com for general inquiries
 - Documentation at [php-query-builder.riyadmunauwar.com](https://php-query-builder.riyadmunauwar.com)
 
 ## 📚 Best Practices

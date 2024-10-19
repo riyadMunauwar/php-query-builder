@@ -164,11 +164,11 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## ✨ Credits
 
-Developed and maintained by [Your Name/Organization]
+Developed and maintained by [Riyad Munauwar/www.riyadmunauwar.com]
 
 ## 📧 Support
 
-For support questions, please use the issue tracker or email support@example.com.
+For support questions, please use the issue tracker or email hello@riyadmunauwar.com.
 
 ---
 

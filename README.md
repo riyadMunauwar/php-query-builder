@@ -26,13 +26,13 @@ A lightweight, secure, and flexible SQL query builder for PHP applications. This
 Currently, this package is in beta. You can install it by cloning this repository:
 
 ```bash
-git clone https://github.com/yourusername/php-query-builder.git
+git clone https://github.com/riyadMunauwar/php-query-builder.git
 ```
 
 Future versions will be available via Composer:
 
 ```bash
-composer require yourusername/php-query-builder
+composer require riyad/php-query-builder (Cooming soon...)
 ```
 
 ## 🔧 Basic Setup

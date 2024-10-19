@@ -70,6 +70,23 @@ class QueryBuilder {
         return $this;
     }
 
+    public function whereNull($column) {
+        $this->where[] = [$column, 'IS', 'NULL'];
+        return $this;
+    }
+
+    public function whereNotNull($column) {
+        $this->where[] = [$column, 'IS NOT', 'NULL'];
+        return $this;
+    }
+
+    public function whereBetween($column, array $values) {
+        $this->params[":between1_{$column}"] = $values[0];
+        $this->params[":between2_{$column}"] = $values[1];
+        $this->where[] = [$column, 'BETWEEN', ":between1_{$column} AND :between2_{$column}"];
+        return $this;
+    }
+
     public function join($table, $first, $operator = null, $second = null, $type = 'INNER') {
         $this->joins[] = [
             'table' => $table,
@@ -120,104 +137,152 @@ class QueryBuilder {
         return $this;
     }
 
-    // Insert record
-    public function insert(array $data) {
+    /**
+     * Build the complete SQL query string
+     * @param string $type Query type (SELECT, INSERT, UPDATE, DELETE)
+     * @param array $data Data for INSERT/UPDATE queries
+     * @return $this
+     */
+    public function buildQuery($type = 'SELECT', array $data = []) {
+        $query = '';
+
+        switch (strtoupper($type)) {
+            case 'SELECT':
+                $query = $this->buildSelectQuery();
+                break;
+            case 'INSERT':
+                $query = $this->buildInsertQuery($data);
+                break;
+            case 'UPDATE':
+                $query = $this->buildUpdateQuery($data);
+                break;
+            case 'DELETE':
+                $query = $this->buildDeleteQuery();
+                break;
+            default:
+                throw new Exception("Unsupported query type: {$type}");
+        }
+
+        $this->query = $query;
+        return $this;
+    }
+
+    private function buildSelectQuery() {
+        $query = "SELECT " . implode(', ', $this->columns) . " FROM {$this->table}";
+        
+        if (!empty($this->joins)) {
+            foreach ($this->joins as $join) {
+                $query .= " {$join['type']} JOIN {$join['table']} ON {$join['first']} {$join['operator']} {$join['second']}";
+            }
+        }
+
+        if (!empty($this->where)) {
+            $query .= $this->buildWhereClause();
+        }
+
+        if (!empty($this->groupBy)) {
+            $query .= " GROUP BY " . implode(', ', $this->groupBy);
+        }
+
+        if (!empty($this->having)) {
+            $query .= $this->buildHavingClause();
+        }
+
+        if (!empty($this->orderBy)) {
+            $query .= $this->buildOrderByClause();
+        }
+
+        if ($this->limit !== null) {
+            $query .= " LIMIT {$this->limit}";
+            if ($this->offset !== null) {
+                $query .= " OFFSET {$this->offset}";
+            }
+        }
+
+        return $query;
+    }
+
+    private function buildInsertQuery(array $data) {
         $columns = implode(', ', array_keys($data));
         $values = implode(', ', array_map(function($item) {
             return ":$item";
         }, array_keys($data)));
 
-        $this->query = "INSERT INTO {$this->table} ($columns) VALUES ($values)";
         $this->params = array_combine(
             array_map(function($key) { return ":$key"; }, array_keys($data)),
             array_values($data)
         );
 
-        return $this->execute();
+        return "INSERT INTO {$this->table} ($columns) VALUES ($values)";
     }
 
-    // Update record(s)
-    public function update(array $data) {
+    private function buildUpdateQuery(array $data) {
         $sets = implode(', ', array_map(function($item) {
             return "$item = :update_$item";
         }, array_keys($data)));
 
-        $this->query = "UPDATE {$this->table} SET $sets";
         $this->params = array_combine(
             array_map(function($key) { return ":update_$key"; }, array_keys($data)),
             array_values($data)
         );
 
-        $this->buildWhere();
-        return $this->execute();
-    }
-
-    // Delete record(s)
-    public function delete() {
-        $this->query = "DELETE FROM {$this->table}";
-        $this->buildWhere();
-        return $this->execute();
-    }
-
-    // Build and execute SELECT query
-    public function get() {
-        $this->query = "SELECT " . implode(', ', $this->columns) . " FROM {$this->table}";
+        $query = "UPDATE {$this->table} SET $sets";
         
-        // Add joins
-        foreach ($this->joins as $join) {
-            $this->query .= " {$join['type']} JOIN {$join['table']} ON {$join['first']} {$join['operator']} {$join['second']}";
-        }
-
-        $this->buildWhere();
-        
-        // Add GROUP BY
-        if (!empty($this->groupBy)) {
-            $this->query .= " GROUP BY " . implode(', ', $this->groupBy);
-        }
-
-        // Add HAVING
-        if (!empty($this->having)) {
-            $havingClauses = [];
-            foreach ($this->having as $having) {
-                $havingClauses[] = "{$having[0]} {$having[1]} :having_{$having[0]}";
-            }
-            $this->query .= " HAVING " . implode(' AND ', $havingClauses);
-        }
-
-        // Add ORDER BY
-        if (!empty($this->orderBy)) {
-            $orderClauses = array_map(function($order) {
-                return "{$order[0]} {$order[1]}";
-            }, $this->orderBy);
-            $this->query .= " ORDER BY " . implode(', ', $orderClauses);
-        }
-
-        // Add LIMIT and OFFSET
-        if ($this->limit !== null) {
-            $this->query .= " LIMIT {$this->limit}";
-            if ($this->offset !== null) {
-                $this->query .= " OFFSET {$this->offset}";
-            }
-        }
-
-        return $this->execute();
-    }
-
-    private function buildWhere() {
         if (!empty($this->where)) {
-            $whereClauses = [];
-            foreach ($this->where as $where) {
-                if ($where[0] === 'OR') {
-                    $whereClauses[] = "OR {$where[1]} {$where[2]} :orwhere_{$where[1]}";
-                } else if (strpos($where[2], '(') === 0) {
-                    // Handle WHERE IN case
-                    $whereClauses[] = "{$where[0]} {$where[1]} {$where[2]}";
-                } else {
-                    $whereClauses[] = "{$where[0]} {$where[1]} :where_{$where[0]}";
-                }
-            }
-            $this->query .= " WHERE " . ltrim(implode(' ', $whereClauses), 'OR ');
+            $query .= $this->buildWhereClause();
         }
+
+        return $query;
+    }
+
+    private function buildDeleteQuery() {
+        $query = "DELETE FROM {$this->table}";
+        
+        if (!empty($this->where)) {
+            $query .= $this->buildWhereClause();
+        }
+
+        return $query;
+    }
+
+    private function buildWhereClause() {
+        $whereClauses = [];
+        foreach ($this->where as $where) {
+            if ($where[0] === 'OR') {
+                $whereClauses[] = "OR {$where[1]} {$where[2]} :orwhere_{$where[1]}";
+            } else if (strpos($where[2], '(') === 0 || $where[2] === 'NULL' || strpos($where[2], ':between') === 0) {
+                $whereClauses[] = "{$where[0]} {$where[1]} {$where[2]}";
+            } else {
+                $whereClauses[] = "{$where[0]} {$where[1]} :where_{$where[0]}";
+            }
+        }
+        return " WHERE " . ltrim(implode(' ', $whereClauses), 'OR ');
+    }
+
+    private function buildHavingClause() {
+        $havingClauses = [];
+        foreach ($this->having as $having) {
+            $havingClauses[] = "{$having[0]} {$having[1]} :having_{$having[0]}";
+        }
+        return " HAVING " . implode(' AND ', $havingClauses);
+    }
+
+    private function buildOrderByClause() {
+        $orderClauses = array_map(function($order) {
+            return "{$order[0]} {$order[1]}";
+        }, $this->orderBy);
+        return " ORDER BY " . implode(', ', $orderClauses);
+    }
+
+    /**
+     * Get the built query and parameters
+     * @return array
+     */
+    public function getQuery() {
+        return [
+            'query' => $this->query,
+            'params' => $this->params
+        ];
     }
 
     private function execute() {
@@ -225,28 +290,60 @@ class QueryBuilder {
             $stmt = $this->pdo->prepare($this->query);
             $stmt->execute($this->params);
 
-            // For SELECT queries
             if (stripos($this->query, 'SELECT') === 0) {
                 return $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
             
-            // For INSERT queries, return last insert ID
             if (stripos($this->query, 'INSERT') === 0) {
                 return $this->pdo->lastInsertId();
             }
             
-            // For UPDATE/DELETE queries, return affected rows
             return $stmt->rowCount();
         } catch (PDOException $e) {
             throw new Exception("Query execution failed: " . $e->getMessage());
         }
     }
 
-    // Get the raw SQL query (for debugging)
+    public function get() {
+        $this->buildQuery('SELECT');
+        return $this->execute();
+    }
+
+    public function insert(array $data) {
+        $this->buildQuery('INSERT', $data);
+        return $this->execute();
+    }
+
+    public function update(array $data) {
+        $this->buildQuery('UPDATE', $data);
+        return $this->execute();
+    }
+
+    public function delete() {
+        $this->buildQuery('DELETE');
+        return $this->execute();
+    }
+
     public function toSql() {
-        return [
-            'query' => $this->query,
-            'params' => $this->params
-        ];
+        return $this->getQuery();
+    }
+
+    /**
+     * Reset all query components
+     * @return $this
+     */
+    public function reset() {
+        $this->table = null;
+        $this->columns = ['*'];
+        $this->where = [];
+        $this->orderBy = [];
+        $this->groupBy = [];
+        $this->having = [];
+        $this->joins = [];
+        $this->limit = null;
+        $this->offset = null;
+        $this->params = [];
+        $this->query = '';
+        return $this;
     }
 }

@@ -1,19 +1,26 @@
 # PHP Fluent Query Builder (Beta)
 
-A lightweight, secure, and flexible SQL query builder for PHP applications. This Query Builder provides an expressive and fluent interface to build and execute database queries without writing raw SQL.
+A powerful, secure, and flexible SQL query builder for PHP applications. This Query Builder provides an expressive interface to build and execute database queries with advanced features and query inspection capabilities.
 
 ## 🌟 Features
 
 - Fluent interface for building SQL queries
 - Support for all major SQL operations (SELECT, INSERT, UPDATE, DELETE)
 - Secure parameter binding to prevent SQL injection
+- Advanced WHERE clause conditions
+  - Basic comparisons (=, >, <, !=, etc.)
+  - WHERE IN
+  - WHERE NULL / NOT NULL
+  - WHERE BETWEEN
+  - OR WHERE conditions
 - Multiple join types (INNER, LEFT, RIGHT)
-- Complex WHERE conditions with multiple operators
 - ORDER BY, GROUP BY, and HAVING clauses
 - Pagination support with LIMIT and OFFSET
+- Query inspection and debugging capabilities
 - PDO integration for database agnostic operations
-- Debug methods for query inspection
+- Query building separation from execution
 - Comprehensive error handling
+- Query state reset functionality
 
 ## 📋 Requirements
 
@@ -32,7 +39,7 @@ git clone https://github.com/riyadMunauwar/php-query-builder.git
 Future versions will be available via Composer:
 
 ```bash
-composer require riyad/php-query-builder (Cooming soon...)
+composer require riyad/php-query-builder [Cooming soon...]
 ```
 
 ## 🔧 Basic Setup
@@ -47,25 +54,40 @@ $qb = new QueryBuilder($pdo);
 
 ## 📖 Usage Examples
 
-### Select Query
+### Basic Select Query
 ```php
-// Simple select
+// Simple select with conditions
 $users = $qb->table('users')
     ->select(['id', 'name', 'email'])
     ->where('status', 'active')
-    ->get();
-
-// Complex select with joins
-$orders = $qb->table('orders')
-    ->select(['orders.id', 'users.name', 'orders.total'])
-    ->join('users', 'orders.user_id', '=', 'users.id')
-    ->where('orders.status', 'pending')
-    ->orderBy('orders.created_at', 'DESC')
-    ->limit(10)
+    ->orderBy('name', 'ASC')
     ->get();
 ```
 
-### Insert Query
+### Advanced Where Conditions
+```php
+// Multiple where conditions
+$users = $qb->table('users')
+    ->where('status', 'active')
+    ->whereNull('deleted_at')
+    ->whereBetween('age', [18, 65])
+    ->whereIn('role', ['admin', 'manager'])
+    ->orWhere('is_premium', true)
+    ->get();
+```
+
+### Join Operations
+```php
+// Complex select with joins
+$orders = $qb->table('orders')
+    ->select(['orders.id', 'users.name', 'orders.total'])
+    ->leftJoin('users', 'orders.user_id', '=', 'users.id')
+    ->where('orders.status', 'pending')
+    ->orderBy('orders.created_at', 'DESC')
+    ->get();
+```
+
+### Insert Operations
 ```php
 $userId = $qb->table('users')
     ->insert([
@@ -75,7 +97,7 @@ $userId = $qb->table('users')
     ]);
 ```
 
-### Update Query
+### Update Operations
 ```php
 $affected = $qb->table('users')
     ->where('id', 1)
@@ -85,39 +107,44 @@ $affected = $qb->table('users')
     ]);
 ```
 
-### Delete Query
+### Delete Operations
 ```php
 $deleted = $qb->table('users')
     ->where('status', 'inactive')
+    ->whereNotNull('deleted_at')
     ->delete();
 ```
 
-### Advanced Where Conditions
+### Query Inspection
 ```php
-$results = $qb->table('products')
-    ->where('price', '>', 100)
-    ->where('category', 'electronics')
-    ->orWhere('featured', true)
-    ->whereIn('id', [1, 2, 3, 4])
-    ->get();
+// Build query without execution
+$qb->table('users')
+    ->where('status', 'active')
+    ->buildQuery('SELECT');
+
+// Get the built query and parameters
+$queryData = $qb->getQuery();
+print_r($queryData['query']);   // View the SQL query
+print_r($queryData['params']);  // View the parameters
+
+// Execute when ready
+$results = $qb->execute();
 ```
 
-### Aggregates and Grouping
+### Query Reset
 ```php
-$sales = $qb->table('orders')
-    ->select(['customer_id', 'SUM(total) as total_sales'])
-    ->groupBy('customer_id')
-    ->having('total_sales', '>', 1000)
-    ->get();
+// Reset query builder state for new query
+$qb->reset();
 ```
 
 ## 🔍 Debugging
 
-You can inspect the generated SQL query and parameters:
+You can inspect any query before execution:
 
 ```php
 $debug = $qb->table('users')
     ->where('status', 'active')
+    ->buildQuery('SELECT')
     ->toSql();
 
 print_r($debug['query']);  // Shows the SQL query
@@ -130,19 +157,22 @@ print_r($debug['params']); // Shows the bound parameters
 2. Limited support for UNION operations
 3. No support for table aliases in complex joins
 4. Basic transaction support only
-5. Limited database-specific feature support
+5. Limited support for database-specific features
 
 ## 🛣️ Roadmap
 
 - [ ] Add support for sub-queries
 - [ ] Implement UNION operations
-- [ ] Add support for table aliases
+- [ ] Add support for complex table aliases
 - [ ] Enhanced transaction support
 - [ ] Query caching mechanism
 - [ ] More database-specific features
 - [ ] Query logging and profiling
 - [ ] Unit test coverage
 - [ ] Documentation website
+- [ ] More WHERE clause variations
+- [ ] Raw query support
+- [ ] Query events and hooks
 
 ## 🤝 Contributing
 
@@ -156,7 +186,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## 🔒 Security
 
-If you discover any security-related issues, please email security@example.com instead of using the issue tracker.
+If you discover any security-related issues, please email issue@riyadmunauwar.com instead of using the issue tracker.
 
 ## 📝 License
 
@@ -164,11 +194,24 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## ✨ Credits
 
-Developed and maintained by [Riyad Munauwar/www.riyadmunauwar.com]
+Developed and maintained by [Riyad Munauwar]
+*Website* www.riyadmunauwar.com
 
 ## 📧 Support
 
-For support questions, please use the issue tracker or email hello@riyadmunauwar.com.
+For support questions, please use:
+- GitHub Issues for bug reports and feature requests
+- Email support@example.com for general inquiries
+- Documentation at [php-query-builder.riyadmunauwar.com](https://php-query-builder.riyadmunauwar.com)
+
+## 📚 Best Practices
+
+1. Always use parameter binding instead of string concatenation
+2. Inspect queries in development using `toSql()`
+3. Reset the query builder state between queries using `reset()`
+4. Use meaningful table and column names
+5. Keep queries simple and maintainable
+6. Use transactions for related operations
 
 ---
 
